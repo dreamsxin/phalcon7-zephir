@@ -31,6 +31,6 @@ function TestExFunction()
 {
 }
 
-if (!extension_loaded('phalcon')) {
+if (!extension_loaded('phalcon') && !extension_loaded('phalcon7')) {
     include_once __DIR__ . '/../prototypes/phalcon.php';
 }

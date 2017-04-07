@@ -893,7 +893,7 @@ class Compiler
                 foreach (new \DirectoryIterator(ZEPHIRPATH . 'prototypes') as $file) {
                     if (!$file->isDir()) {
                         $extension = str_replace('.php', '', $file);
-                        if (!extension_loaded($extension)) {
+                        if (!extension_loaded($extension) && !extension_loaded($extension.'7')) {
                             require $file->getRealPath();
                         }
                     }
