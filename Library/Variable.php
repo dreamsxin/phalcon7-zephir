@@ -2,22 +2,19 @@
 
 /*
  +--------------------------------------------------------------------------+
- | Zephir Language                                                          |
- +--------------------------------------------------------------------------+
- | Copyright (c) 2013-2017 Zephir Team and contributors                     |
- +--------------------------------------------------------------------------+
- | This source file is subject the MIT license, that is bundled with        |
- | this package in the file LICENSE, and is available through the           |
- | world-wide-web at the following url:                                     |
- | http://zephir-lang.com/license.html                                      |
+ | Zephir                                                                   |
+ | Copyright (c) 2013-present Zephir Team (https://zephir-lang.com/)        |
  |                                                                          |
- | If you did not receive a copy of the MIT license and are unable          |
- | to obtain it through the world-wide-web, please send a note to           |
- | license@zephir-lang.com so we can mail you a copy immediately.           |
+ | This source file is subject the MIT license, that is bundled with this   |
+ | package in the file LICENSE, and is available through the world-wide-web |
+ | at the following url: http://zephir-lang.com/license.html                |
  +--------------------------------------------------------------------------+
-*/
+ */
 
 namespace Zephir;
+
+use Zephir\Variable\Globals;
+use Zephir\Compiler\CompilerException;
 
 /**
  * Variable
@@ -36,7 +33,7 @@ class Variable
      * Current dynamic type of the variable
      * @var array
      */
-    protected $dynamicTypes = array('unknown' => true);
+    protected $dynamicTypes = ['unknown' => true];
 
     /**
      * Variable's name
@@ -148,15 +145,35 @@ class Variable
     protected $usedNode;
 
     /**
+     * @var Globals
+     */
+    protected $globalsManager;
+
+    /**
+     * Complex variable type, they may need special treatment
+     *
+     * @var array
+     */
+    protected $complexTypes = [
+        'variable' => 1,
+        'string'   => 1,
+        'array'    => 1,
+        'resource' => 1,
+        'callable' => 1,
+        'object'   => 1,
+    ];
+
+    /**
      * Variable constructor
      *
      * @param string $type
      * @param string $name
      * @param Branch $branch
-     * @param mixed $defaultInitValue
      */
-    public function __construct($type, $name, $branch, $defaultInitValue = null)
+    public function __construct($type, $name, $branch)
     {
+        $this->globalsManager = new Globals();
+
         switch ($type) {
             case 'callable':
             case 'object':
@@ -666,16 +683,15 @@ class Variable
     /**
      * Set if the variable must be initialized to null
      *
-     * @param boolean $mustInitNull
-     * @return boolean
+     * @param mixed $mustInitNull
      */
     public function setMustInitNull($mustInitNull)
     {
-        $this->mustInitNull = (boolean) $mustInitNull;
+        $this->mustInitNull = (bool) $mustInitNull;
     }
 
     /**
-     * Sets the default init value
+     * Sets the default init value.
      *
      * @param mixed $value
      */
@@ -977,6 +993,26 @@ class Variable
 
             $this->setMustInitNull(true);
         }
+    }
+
+    /**
+     * Whether the variable is of a complex type
+     *
+     * @return boolean
+     */
+    public function isComplex()
+    {
+        return isset($this->complexTypes[$this->type]);
+    }
+
+    /**
+     * Checks if a variable is a superglobal
+     *
+     * @return boolean
+     */
+    public function isSuperGlobal()
+    {
+        return $this->isExternal && $this->globalsManager->isSuperGlobal($this->name);
     }
 
     /**

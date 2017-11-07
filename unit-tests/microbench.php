@@ -2,18 +2,12 @@
 
 /*
  +--------------------------------------------------------------------------+
- | Zephir Language                                                          |
- +--------------------------------------------------------------------------+
- | Copyright (c) 2013-2017 Zephir Team and contributors                     |
- +--------------------------------------------------------------------------+
- | This source file is subject the MIT license, that is bundled with        |
- | this package in the file LICENSE, and is available through the           |
- | world-wide-web at the following url:                                     |
- | http://zephir-lang.com/license.html                                      |
+ | Zephir                                                                   |
+ | Copyright (c) 2013-present Zephir Team (https://zephir-lang.com/)        |
  |                                                                          |
- | If you did not receive a copy of the MIT license and are unable          |
- | to obtain it through the world-wide-web, please send a note to           |
- | license@zephir-lang.com so we can mail you a copy immediately.           |
+ | This source file is subject the MIT license, that is bundled with this   |
+ | package in the file LICENSE, and is available through the world-wide-web |
+ | at the following url: http://zephir-lang.com/license.html                |
  +--------------------------------------------------------------------------+
 */
 
@@ -59,32 +53,58 @@ function total()
 
 const N = 5000000;
 
-echo "Benchmark Zephir ".\Zephir\Compiler::VERSION." \n";
+echo "Benchmark Zephir ".\Zephir\Compiler::getCurrentVersion()." \n";
+
+$x = new \Test\Bench\Foo();
 
 $t = start_test();
-$x = new \Test\Bench\Foo();
-$x->empty_for_in_range(N);
+$x->emptyForInRange(N);
 $t = end_test($t, 'empty for in range');
-$x->read_prop(N);
+
+$x->readProp(N);
 $t = end_test($t, '$x = $this->x');
-$x->write_prop(N);
+
+$x->writeProp(N);
 $t = end_test($t, '$this->x = 0');
-$x->assign_add_prop(N);
+
+$x->writeStatic(N);
+$t = end_test($t, 'self::a = 0');
+
+$x->assignAddProp(N);
 $t = end_test($t, '$this->x += 2');
+
 //$x->pre_inc_prop(N);
 //$t = end_test($t, '++$this->x');
 //$x->pre_dec_prop(N);
 //$t = end_test($t, '--$this->x');
-$x->post_inc_prop(N);
+
+$x->postIncProp(N);
 $t = end_test($t, '$this->x++');
-$x->post_dec_prop(N);
+
+$x->postDecProp(N);
 $t = end_test($t, '$this->x--');
-$x->isset_prop(N);
+
+$x->issetProp(N);
 $t = end_test($t, 'isset($this->x)');
-$x->empty_prop(N);
+
+$x->issetStatic(N);
+$t = end_test($t, 'isset(self::A)');
+
+$x->emptyProp(N);
 $t = end_test($t, 'empty($this->x)');
+
+$x->emptyStatic(N);
+$t = end_test($t, 'empty(self::a)');
+
 $x->call(N);
 $t = end_test($t, '$this->f()');
-$x->read_const(N);
+
+$x->scall(N);
+$t = end_test($t, 'self::f()');
+
+$x->scallWithReturnTrue(N);
+$t = end_test($t, 'self::f() -> true');
+
+$x->readConst(N);
 $t = end_test($t, '$x = Foo::TEST');
 total();

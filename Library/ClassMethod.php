@@ -19,6 +19,7 @@
 
 namespace Zephir;
 
+use Zephir\Compiler\CompilerException;
 use Zephir\Passes\LocalContextPass;
 use Zephir\Passes\StaticTypeInference;
 use Zephir\Passes\CallGathererPass;
@@ -370,7 +371,7 @@ class ClassMethod
     /**
      * Returns the class definition where the method was declared
      *
-     * @return ClassDefinition
+     * @return ClassDefinition|null
      */
     public function getClassDefinition()
     {
@@ -1962,7 +1963,7 @@ class ClassMethod
          * Fetch used superglobals
          */
         foreach ($symbolTable->getVariables() as $name => $variable) {
-            if ($symbolTable->isSuperGlobal($name)) {
+            if ($variable->isSuperGlobal()) {
                 $globalVar = $symbolTable->getVariable($name);
                 $codePrinter->preOutput("\t" . $compilationContext->backend->fetchGlobal($globalVar, $compilationContext, false));
             }

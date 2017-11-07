@@ -2,26 +2,20 @@
 
 /*
  +--------------------------------------------------------------------------+
- | Zephir Language                                                          |
- +--------------------------------------------------------------------------+
- | Copyright (c) 2013-2017 Zephir Team and contributors                     |
- +--------------------------------------------------------------------------+
- | This source file is subject the MIT license, that is bundled with        |
- | this package in the file LICENSE, and is available through the           |
- | world-wide-web at the following url:                                     |
- | http://zephir-lang.com/license.html                                      |
+ | Zephir                                                                   |
+ | Copyright (c) 2013-present Zephir Team (https://zephir-lang.com/)        |
  |                                                                          |
- | If you did not receive a copy of the MIT license and are unable          |
- | to obtain it through the world-wide-web, please send a note to           |
- | license@zephir-lang.com so we can mail you a copy immediately.           |
+ | This source file is subject the MIT license, that is bundled with this   |
+ | package in the file LICENSE, and is available through the world-wide-web |
+ | at the following url: http://zephir-lang.com/license.html                |
  +--------------------------------------------------------------------------+
 */
 
 namespace Zephir;
 
-use Zephir\Variable;
+use Zephir\Compiler\CompilerException;
+use Zephir\Variable\Globals;
 use Zephir\Passes\LocalContextPass;
-use Zephir\Passes\StaticTypeInference;
 
 /**
  * SymbolTable
@@ -45,18 +39,10 @@ class SymbolTable
 
     protected $compilationContext;
 
-    public function resolveVariableToBranch($name, $compilationContext)
-    {
-        $currentBranch = $compilationContext->branchManager->getCurrentBranch();
-        do {
-            $currentId = $currentBranch->getUniqueId();
-            if (isset($this->branchVariables[$currentId]) && isset($this->branchVariables[$currentId][$name])) {
-                return $currentBranch;
-            }
-            $currentBranch = $currentBranch->getParentBranch();
-        } while ($currentBranch != null);
-        return null;
-    }
+    /**
+     * @var Globals
+     */
+    protected $globalsManager;
 
     /**
      * SymbolTable
@@ -65,6 +51,8 @@ class SymbolTable
      */
     public function __construct(CompilationContext $compilationContext)
     {
+        $this->globalsManager = new Globals();
+
         /* The variables are registered in branch 1, which is the external branch */
         $this->compilationContext = $compilationContext;
         $this->branchVariables[1] = array();
@@ -86,6 +74,19 @@ class SymbolTable
         $returnValue->setIsInitialized(true, $compilationContext, array());
         $returnValue->increaseUses();
         $this->branchVariables[1]['return_value_ptr'] = $returnValue;
+    }
+
+    public function resolveVariableToBranch($name, $compilationContext)
+    {
+        $currentBranch = $compilationContext->branchManager->getCurrentBranch();
+        do {
+            $currentId = $currentBranch->getUniqueId();
+            if (isset($this->branchVariables[$currentId]) && isset($this->branchVariables[$currentId][$name])) {
+                return $currentBranch;
+            }
+            $currentBranch = $currentBranch->getParentBranch();
+        } while ($currentBranch != null);
+        return null;
     }
 
     /**
@@ -125,38 +126,36 @@ class SymbolTable
      * @param int $type
      * @param string $name
      * @param CompilationContext $compilationContext
-     * @param mixed $defaultValue
      * @return Variable
      */
-    public function addVariable($type, $name, CompilationContext $compilationContext, $defaultValue = null)
+    public function addVariable($type, $name, CompilationContext $compilationContext)
     {
         $currentBranch = $compilationContext->branchManager->getCurrentBranch();
         $branchId = $currentBranch->getUniqueId();
-        if ($this->isSuperGlobal($name) || $type == 'zephir_fcall_cache_entry') {
+        if ($this->globalsManager->isSuperGlobal($name) || $type == 'zephir_fcall_cache_entry') {
             $branchId = 1;
         }
+
         $varName = $name;
         if ($branchId > 1 && $currentBranch->getType() != Branch::TYPE_ROOT) {
             $varName = $name . Variable::BRANCH_MAGIC . $branchId;
         }
 
-        $variable = new Variable($type, $varName, $compilationContext->currentBranch, $defaultValue);
-        if ($type == 'variable') {
-            if ($this->localContext) {
-                /**
-                 * Checks whether a variable can be optimized to be static or not
-                 */
-                if ($this->localContext->shouldBeLocal($name)) {
-                    $variable->setLocalOnly(true);
-                }
-            }
-        }
+        $variable = new Variable($type, $varName, $currentBranch);
 
+        /**
+         * Checks whether a variable can be optimized to be static or not
+         */
+        if ($type == 'variable' && $this->localContext && $this->localContext->shouldBeLocal($name)) {
+            $variable->setLocalOnly(true);
+        }
 
         if (!isset($this->branchVariables[$branchId])) {
             $this->branchVariables[$branchId] = array();
         }
+
         $this->branchVariables[$branchId][$name] = $variable;
+
         return $variable;
     }
 
@@ -204,7 +203,7 @@ class SymbolTable
     /**
      * Returns all the variables defined in the symbol table
      *
-     * @return array
+     * @return \Zephir\Variable[]
      */
     public function getVariables()
     {
@@ -224,18 +223,6 @@ class SymbolTable
         }
         return null;
     }
-
-    /**
-     * Checks if a variable is a superglobal
-     *
-     * @param string $name
-     * @return boolean
-     */
-    public function isSuperGlobal($name)
-    {
-        return $name == '_GET' || $name == '_POST' || $name == '_COOKIE' || $name == '_SERVER' || $name == '_SESSION' || $name == '_REQUEST' || $name == '_FILES';
-    }
-
     /**
      * Return a variable in the symbol table, it will be used for a read operation
      *
@@ -243,6 +230,7 @@ class SymbolTable
      * @param CompilationContext $compilationContext
      * @param array $statement
      * @return Variable
+     * @throws CompilerException
      */
     public function getVariableForRead($name, CompilationContext $compilationContext = null, array $statement = null)
     {
@@ -258,7 +246,7 @@ class SymbolTable
         /**
          * Create superglobals just in time
          */
-        if ($this->isSuperGlobal($name)) {
+        if ($this->globalsManager->isSuperGlobal($name)) {
             if (!$this->hasVariable($name)) {
                 /**
                  * @TODO, injecting globals, initialize to null and check first?
@@ -429,7 +417,7 @@ class SymbolTable
         /**
          * Create superglobals just in time
          */
-        if ($this->isSuperGlobal($name)) {
+        if ($this->globalsManager->isSuperGlobal($name)) {
             if (!$this->hasVariable($name)) {
                 /**
                  * @TODO, injecting globals, initialize to null and check first?
@@ -439,6 +427,7 @@ class SymbolTable
                 $superVar->setDynamicTypes('array');
                 $superVar->increaseMutates();
                 $superVar->increaseUses();
+                $superVar->setIsExternal(true);
                 $superVar->setUsed(true, $statement);
                 $this->addRawVariable($superVar);
                 return $superVar;
@@ -475,13 +464,14 @@ class SymbolTable
      * @param CompilationContext $compilationContext
      * @param array $statement
      * @return Variable
+     * @throws CompilerException
      */
     public function getVariableForUpdate($name, CompilationContext $compilationContext, array $statement = null)
     {
         /**
          * Create superglobals just in time
          */
-        if ($this->isSuperGlobal($name)) {
+        if ($this->globalsManager->isSuperGlobal($name)) {
             if (!$this->hasVariable($name)) {
                 /**
                  * @TODO, injecting globals, initialize to null and check first?

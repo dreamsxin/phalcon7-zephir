@@ -2,23 +2,18 @@
 
 /*
  +--------------------------------------------------------------------------+
- | Zephir Language                                                          |
- +--------------------------------------------------------------------------+
- | Copyright (c) 2013-2017 Zephir Team and contributors                     |
- +--------------------------------------------------------------------------+
- | This source file is subject the MIT license, that is bundled with        |
- | this package in the file LICENSE, and is available through the           |
- | world-wide-web at the following url:                                     |
- | http://zephir-lang.com/license.html                                      |
+ | Zephir                                                                   |
+ | Copyright (c) 2013-present Zephir Team (https://zephir-lang.com/)        |
  |                                                                          |
- | If you did not receive a copy of the MIT license and are unable          |
- | to obtain it through the world-wide-web, please send a note to           |
- | license@zephir-lang.com so we can mail you a copy immediately.           |
+ | This source file is subject the MIT license, that is bundled with this   |
+ | package in the file LICENSE, and is available through the world-wide-web |
+ | at the following url: http://zephir-lang.com/license.html                |
  +--------------------------------------------------------------------------+
 */
 
 namespace Zephir;
 
+use Zephir\Compiler\CompilerException;
 use Zephir\Operators\Arithmetical\AddOperator;
 use Zephir\Operators\Arithmetical\SubOperator;
 use Zephir\Operators\Arithmetical\MulOperator;
@@ -59,6 +54,7 @@ use Zephir\Operators\Other\TypeOfOperator;
 use Zephir\Operators\Other\CastOperator;
 use Zephir\Operators\Other\RangeInclusiveOperator;
 use Zephir\Operators\Other\RangeExclusiveOperator;
+use Zephir\Operators\Other\TypeHintOperator;
 use Zephir\Expression\Closure;
 use Zephir\Expression\ClosureArrow;
 use Zephir\Expression\Constants;
@@ -87,6 +83,9 @@ class Expression
 
     protected $_stringOperation = false;
 
+    /**
+     * @var Variable
+     */
     protected $_expectingVariable;
 
     protected $_evalMode = false;
@@ -259,34 +258,6 @@ class Expression
     }
 
     /**
-     *
-     *
-     * @param array $expression
-     * @param CompilationContext $compilationContext
-     * @return CompiledExpression
-     */
-    public function compileTypeHint($expression, CompilationContext $compilationContext)
-    {
-        $expr = new Expression($expression['right']);
-        $expr->setReadOnly(true);
-        $resolved = $expr->compile($compilationContext);
-
-        if ($resolved->getType() != 'variable') {
-            throw new CompilerException("Type-Hints only can be applied to dynamic variables", $expression);
-        }
-
-        $symbolVariable = $compilationContext->symbolTable->getVariableForRead($resolved->getCode(), $compilationContext, $expression);
-        if (!$symbolVariable->isVariable()) {
-            throw new CompilerException("Type-Hints only can be applied to dynamic variables", $expression);
-        }
-
-        $symbolVariable->setDynamicTypes('object');
-        $symbolVariable->setClassTypes($compilationContext->getFullName($expression['left']['value']));
-
-        return $resolved;
-    }
-
-    /**
      * Resolves an expression
      *
      * @param CompilationContext $compilationContext
@@ -313,12 +284,13 @@ class Expression
                 return new LiteralCompiledExpression($type, $expression['value'], $expression);
 
             case 'string':
+                $v = $expression['value'];
                 if (!$this->_stringOperation) {
-                    if (ctype_digit($expression['value'])) {
-                        return new CompiledExpression('int', $expression['value'], $expression);
+                    if (ctype_digit($v) && (strlen($v) == 1 || '0' != substr($v, 0, 1))) {
+                        return new CompiledExpression('int', $v, $expression);
                     }
                 }
-                return new LiteralCompiledExpression('string', str_replace(PHP_EOL, '\\n', $expression['value']), $expression);
+                return new LiteralCompiledExpression('string', str_replace(PHP_EOL, '\\n', $v), $expression);
             case 'istring':
                 return new LiteralCompiledExpression('istring', str_replace(PHP_EOL, '\\n', $expression['value']), $expression);
 
@@ -540,7 +512,10 @@ class Expression
                 break;
 
             case 'type-hint':
-                return $this->compileTypeHint($expression, $compilationContext);
+                $expr = new TypeHintOperator();
+                $expr->setReadOnly($this->isReadOnly());
+                $expr->setExpectReturn($this->_expecting, $this->_expectingVariable);
+                return $expr->compile($expression, $compilationContext);
 
             case 'instanceof':
                 $compilableExpression = new InstanceOfOperator();
